@@ -1,4 +1,4 @@
-from threading import Thread
+from threading import Thread, active_count
 import numpy as np
 
 class LearningThread(Thread):
@@ -17,15 +17,12 @@ class LearningThread(Thread):
     Thread.__init__(self)
 
   def run(self):
-    for blocking_thread in self.blocking_threads:
-      if(blocking_thread.is_alive()):
-        blocking_thread.join()
-    
+    print(str(active_count()) + ' learning threads are alive')    
     im, environment = self.memory.prepare_environment(self.environment, self.steps_done, self.episode)
     reward = self.memory.calculate_reward(self.state, self.reward, np.array(im), self.inventory)
-    self.memory.push(self.state, self.action, self.next_state, environment, reward)
+    print('Reward: ' + str(reward))
+    self.memory.push(self.steps_done, self.state, self.action, self.next_state, environment, reward)
+    for blocking_thread in self.blocking_threads:
+      if(blocking_thread.is_alive() and blocking_thread.name != self.name):
+        blocking_thread.join()
     self.memory.optimize_model()
-    
-    # Update the target network, copying all weights and biases in DQN
-    if self.steps_done % self.memory.TARGET_UPDATE == 0:
-        self.memory.save_model()

@@ -27,7 +27,7 @@ MINECRAFT_LAUNCHER_PATH = "C:\\Program Files (x86)\\Minecraft Launcher\\Minecraf
 SCREENSHOT_HISTORY_ROOT_PATH = MEMORY_PATH
 TESSERACT_PATH = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 STATE_DICT_PATH = os.path.join(MEMORY_PATH, 'state_dict.dat')
-LOG_LEVEL = 1
+LOG_LEVEL = 3
 agent = Mind(TESSERACT_PATH, 'none', logger)
 env = MinecraftLiveEnv(agent, MINECRAFT_SCREENSHOT_PATH)
 # set up matplotlib
@@ -42,8 +42,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Get screen size so that we can initialize layers correctly based on shape
 # returned from AI gym.
-screen_width = int(agent.resolution[0] * .2)
-screen_height = int(agent.resolution[1] * .2)
+screen_width = int(agent.resolution[0] * .05)
+screen_height = int(agent.resolution[1] * .05)
 
 resize = T.Compose([T.ToPILImage(),
                     T.Resize([screen_width, screen_height], interpolation=Image.CUBIC),
@@ -131,6 +131,7 @@ while True:
         print_output(action_list, 5)
         environment, reward, done, _ = env.step(action_list)
         steps_done = steps_done + 1
+        print_output(str(steps_done), 3)
         # Observe new state
         last_screen = current_screen
         current_screen = get_screen()
@@ -142,6 +143,7 @@ while True:
         # Store the transition in memory
         learning_thread = LearningThread(memory, state, action, next_state, reward, steps_done, environment, i_episode, agent.inventory, learning_threads)
         learning_thread.start()
+        print_output('Learning thread ' + learning_thread.name + ' started...', 3)
         learning_threads.append(learning_thread)        
         # Move to the next state
         state = next_state
@@ -149,9 +151,9 @@ while True:
         if done:
             print_output('Agent has died...', 3)
             episode_durations.append(t + 1)
-            for learning_thread in learning_threads:
-              if(learning_thread.is_alive()):
-                learning_thread.join()
+            # Update the target network, copying all weights and biases in DQN
+            if i_episode % memory.TARGET_UPDATE == 0:
+                memory.save_model()
             break
 
 

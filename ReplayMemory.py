@@ -16,7 +16,8 @@ class ReplayMemory():
   EPS_START = 0.9
   EPS_END = 0.05
   EPS_DECAY = 200
-  TARGET_UPDATE = 128
+  TARGET_UPDATE = 10
+  BOUNCE = 5
 
   Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'environment', 'reward'))
@@ -36,13 +37,17 @@ class ReplayMemory():
       self.last_brightness = 0
       self.last_health = 0
       self.last_food = 0
+      self.last_bounce = self.BOUNCE
 
 
-  def push(self, *args):
+  def push(self, step, *args):
       """Saves a transition."""
+      self.position = step % self.capacity
+      transition = self.Transition(*args)
       if len(self.memory) < self.capacity:
-          self.memory.append(None)
-      self.memory[self.position] = self.Transition(*args)
+          for i in range(len(self.memory), self.capacity):
+            self.memory.append(transition)
+      self.memory[self.position] = transition
       self.position = (self.position + 1) % self.capacity
 
 
@@ -52,7 +57,7 @@ class ReplayMemory():
 
   def read_memory(self, path):
       if(os.path.isfile(path)):
-          f = open(os.path.join(path,MEMORY_FILE), 'r')
+          f = open(self.MEMORY_PATH, 'r')
           memstring = f.read()
           f.close()
           self.memory = memstring.split('|')
@@ -60,9 +65,9 @@ class ReplayMemory():
 
 
   def save_memory(self, path):
-      f = open(os.path.join(path,MEMORY_FILE), 'w+')
-      memstring = "|".join(self.memory)
-      f.write(memstring)
+      f = open(self.MEMORY_PATH, 'w+')
+      #memstring = str(self)
+      #f.write(memstring)
       f.close()
 
   
@@ -101,16 +106,20 @@ class ReplayMemory():
       if(inventory):
         brightness = self.last_brightness
 
-      if(brightness > 150):
-        new_reward = new_reward + 1
-      elif(brightness < 50):
-        new_reward = new_reward - 1
+      if(brightness > 125):
+        new_reward = new_reward + 0.5
+      elif(brightness < 100):
+        new_reward = new_reward - 2
 
-      if(self.last_health > 0):
-        new_reward = new_reward + abs(self.last_health - health)
-      
-      if(self.last_food > 0):
-        new_reward = new_reward + abs(self.last_food - food)
+      self.last_bounce = self.last_bounce - 1
+
+      if(self.last_bounce == 0):
+        if(self.last_health > 0):
+          new_reward = new_reward + (health - self.last_health)
+        
+        if(self.last_food > 0):
+          new_reward = new_reward + (food - self.last_food)
+        self.last_bounce = self.BOUNCE
 
       self.last_brightness = brightness
       self.last_health = health
@@ -141,6 +150,8 @@ class ReplayMemory():
                                             batch.next_state)), device=self.device, dtype=torch.bool)
       non_final_next_states = torch.cat([s for s in batch.next_state
                                                   if s is not None])
+    
+
       state_batch = torch.cat(batch.state)
       action_batch = torch.cat(batch.action)
       reward_batch = torch.cat(batch.reward)
@@ -155,22 +166,20 @@ class ReplayMemory():
       # on the "older" target_net; selecting their best reward with max(1)[0].
       # This is merged based on the mask, such that we'll have either the expected
       # state value or 0 in case the state was final.
-      next_state_values = torch.zeros([self.BATCH_SIZE,self.action_spaces], device=self.device)
+      next_state_values = torch.zeros([self.BATCH_SIZE,len(self.action_spaces)], device=self.device)
       action_tensor = self.target_net(non_final_next_states)
       next_state_values[non_final_mask] = self.process_state_actions(action_tensor.detach()).type(torch.FloatTensor)
       # Compute the expected Q values
       expected_state_action_values = (next_state_values * self.GAMMA) + reward_batch
       # Compute Huber loss
       loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-
       # Optimize the model
       self.optimizer.zero_grad()
       loss.backward()
       for param in self.policy_net.parameters():
           param.grad.data.clamp_(-1, 1)
-      
       self.optimizer.step()
-      return [self.policy_net, self.target_net]
+
 
   def process_state_actions(self, action_tensor):
       placeholder = action_tensor.numpy()[0]
@@ -216,3 +225,13 @@ class ReplayMemory():
 
   def __len__(self):
       return len(self.memory) 
+
+  def __str__(self):
+      result = ""
+      for i in self.memory:
+        transition_list = []
+        for trans in i:
+          transition_list.append(trans)
+        result = "|".join(transition_list) + "\n"
+      return result
+        
