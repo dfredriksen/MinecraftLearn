@@ -27,7 +27,7 @@ class ReplayMemory():
       self.position = 0
       self.optimizer = optimizer
       self.device = device
-      self.MEMORY_PATH = MEMORY_PATH
+      self.MEMORY_PATH = os.path.join(MEMORY_PATH, MEMORY_FILE)
       self.policy_net = policy_net
       self.target_net = target_net
       self.STATE_DICT_PATH = STATE_DICT_PATH
@@ -66,7 +66,7 @@ class ReplayMemory():
       f.close()
 
   
-  def calculate_reward(self, state, reward, image_data):
+  def calculate_reward(self, state, reward, image_data, inventory):
       hx1 = int(image_data.shape[1] * 0.312)
       hx2 = int(image_data.shape[1] * 0.458)
       hy1 = int(image_data.shape[0] * 0.87) +1
@@ -98,6 +98,9 @@ class ReplayMemory():
       if food < 0:
         food = 0
       
+      if(inventory):
+        brightness = self.last_brightness
+
       if(brightness > 150):
         new_reward = new_reward + 1
       elif(brightness < 50):
@@ -109,6 +112,7 @@ class ReplayMemory():
       if(self.last_food > 0):
         new_reward = new_reward + abs(self.last_food - food)
 
+      self.last_brightness = brightness
       self.last_health = health
       self.last_food = food
 
@@ -151,7 +155,7 @@ class ReplayMemory():
       # on the "older" target_net; selecting their best reward with max(1)[0].
       # This is merged based on the mask, such that we'll have either the expected
       # state value or 0 in case the state was final.
-      next_state_values = torch.zeros([self.BATCH_SIZE,5], device=self.device)
+      next_state_values = torch.zeros([self.BATCH_SIZE,self.action_spaces], device=self.device)
       action_tensor = self.target_net(non_final_next_states)
       next_state_values[non_final_mask] = self.process_state_actions(action_tensor.detach()).type(torch.FloatTensor)
       # Compute the expected Q values
@@ -207,6 +211,7 @@ class ReplayMemory():
   def save_model(self):
       self.target_net.load_state_dict(self.policy_net.state_dict())
       torch.save(self.policy_net.state_dict(), self.STATE_DICT_PATH)
+      self.save_memory(self.MEMORY_PATH)
 
 
   def __len__(self):

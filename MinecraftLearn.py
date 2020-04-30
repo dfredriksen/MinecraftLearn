@@ -17,14 +17,17 @@ import torch.optim as optim
 
 from MinecraftMind import Mind
 
-TRIAL_LABEL = "Trial1"
+timestamp = time.time()
+DATA_PATH = "C:\\Users\\dfred\\Desktop\\Projects\\RL\\MinecraftLearnData\\"
+TRIAL_LABEL = os.path.join(str(timestamp))
+MEMORY_PATH = "C:\\Users\\dfred\\Desktop\\Projects\\RL\\MinecraftLearnData\\" + TRIAL_LABEL + "\\"
+os.mkdir(os.path.join(MEMORY_PATH)) 
 MINECRAFT_SCREENSHOT_PATH = "C:\\Users\\dfred\\AppData\\Roaming\\.minecraft\\screenshots\\"
 MINECRAFT_LAUNCHER_PATH = "C:\\Program Files (x86)\\Minecraft Launcher\\MinecraftLauncher.exe"
-SCREENSHOT_HISTORY_ROOT_PATH = "C:\\Users\\dfred\\Desktop\\Projects\\RL\\MinecraftLearnData\\" + TRIAL_LABEL + "\\"
+SCREENSHOT_HISTORY_ROOT_PATH = MEMORY_PATH
 TESSERACT_PATH = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
-MEMORY_PATH = "C:\\Users\\dfred\\Desktop\\Projects\\RL\\MinecraftLearnData\\" + TRIAL_LABEL + "\\"
 STATE_DICT_PATH = os.path.join(MEMORY_PATH, 'state_dict.dat')
-LOG_LEVEL = 5
+LOG_LEVEL = 1
 agent = Mind(TESSERACT_PATH, 'none', logger)
 env = MinecraftLiveEnv(agent, MINECRAFT_SCREENSHOT_PATH)
 # set up matplotlib
@@ -39,8 +42,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Get screen size so that we can initialize layers correctly based on shape
 # returned from AI gym.
-screen_width = int(agent.resolution[0] * .05)
-screen_height = int(agent.resolution[1] * .05)
+screen_width = int(agent.resolution[0] * .2)
+screen_height = int(agent.resolution[1] * .2)
 
 resize = T.Compose([T.ToPILImage(),
                     T.Resize([screen_width, screen_height], interpolation=Image.CUBIC),
@@ -48,7 +51,7 @@ resize = T.Compose([T.ToPILImage(),
 
 #button_coordinates = agent.start_launcher(MINECRAFT_LAUNCHER_PATH)
 #agent.play_minecraft_multiplayer(button_coordinates, 60)
-time.sleep(5)
+#time.sleep(5)
 
 
 def print_output(message, level):
@@ -137,7 +140,7 @@ while True:
             next_state = None
 
         # Store the transition in memory
-        learning_thread = LearningThread(memory, state, action, next_state, reward, steps_done, environment, i_episode, learning_threads)
+        learning_thread = LearningThread(memory, state, action, next_state, reward, steps_done, environment, i_episode, agent.inventory, learning_threads)
         learning_thread.start()
         learning_threads.append(learning_thread)        
         # Move to the next state
@@ -146,6 +149,9 @@ while True:
         if done:
             print_output('Agent has died...', 3)
             episode_durations.append(t + 1)
+            for learning_thread in learning_threads:
+              if(learning_thread.is_alive()):
+                learning_thread.join()
             break
 
 
